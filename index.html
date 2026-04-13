@@ -182,6 +182,45 @@ tfoot td{padding:11px 16px;font-weight:600;background:#f7f6f3;border-top:2px sol
 .already-box .ab-title{font-size:13px;font-weight:600;color:#166534;margin-bottom:2px;}
 .already-box .ab-sub{font-size:12px;color:#4ade80;color:#166534;opacity:.8;}
 
+
+/* Payment & Ledger */
+.pay-btns{display:flex;gap:8px;margin-top:10px;}
+.btn-cash{background:#f0fdf4;color:#166534;border:1.5px solid #86efac;}
+.btn-cash:hover{background:#dcfce7;}
+.btn-bank{background:#eff6ff;color:#1d4ed8;border:1.5px solid #93c5fd;}
+.btn-bank:hover{background:#dbeafe;}
+.pay-status{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;margin-top:10px;font-size:13px;}
+.pay-status.paid-cash{background:#f0fdf4;border:1px solid #86efac;color:#166534;}
+.pay-status.paid-bank{background:#eff6ff;border:1px solid #93c5fd;color:#1d4ed8;}
+.pay-status.unpaid{background:#fef9c3;border:1px solid #fde047;color:#854d0e;}
+.slip-pay-section{border-top:1px solid #eee;padding-top:14px;margin-top:14px;}
+.ledger-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #f5f5f5;font-size:13px;}
+.ledger-row:last-child{border-bottom:none;}
+.ledger-credit{color:#16a34a;font-weight:600;font-family:'DM Mono',monospace;}
+.ledger-debit{color:#dc2626;font-weight:600;font-family:'DM Mono',monospace;}
+.ledger-bal{font-weight:700;font-family:'DM Mono',monospace;}
+.ledger-bal.neg{color:#dc2626;}
+.ledger-bal.pos{color:#16a34a;}
+.ledger-bal.zero{color:#888;}
+.emp-bal-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;font-family:'DM Mono',monospace;}
+.emp-bal-badge.neg{background:#fee2e2;color:#991b1b;}
+.emp-bal-badge.zero{background:#f3f4f6;color:#6b7280;}
+
+/* Adhoc payment panel in ledger */
+.adhoc-panel{background:#f8faff;border:1px solid #dbeafe;border-radius:10px;padding:16px 18px;margin-bottom:14px;}
+.adhoc-panel h4{font-size:13px;font-weight:600;color:#1e40af;margin-bottom:12px;display:flex;align-items:center;gap:7px;}
+.adhoc-alloc{margin-top:14px;border-top:1px solid #e0e9ff;padding-top:12px;}
+.adhoc-alloc-title{font-size:11px;font-weight:600;color:#888;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px;}
+.alloc-row{display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:#fff;border:1px solid #eef2ff;border-radius:7px;margin-bottom:5px;font-size:13px;}
+.alloc-row .ar-month{font-weight:500;color:#333;}
+.alloc-row .ar-due{color:#888;font-size:12px;}
+.alloc-row .ar-alloc{font-weight:600;color:#16a34a;font-family:"DM Mono",monospace;}
+.alloc-row .ar-remain{font-size:11px;color:#888;font-family:"DM Mono",monospace;}
+.alloc-row.fully-paid{background:#f0fdf4;border-color:#bbf7d0;}
+.alloc-row.partly-paid{background:#fffbeb;border-color:#fde68a;}
+.alloc-row.unpaid{background:#fff;}
+.fifo-summary{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px;color:#166534;}
+.fifo-summary.partial{background:#fffbeb;border-color:#fde68a;color:#854d0e;}
 @media print{
   .sidebar,.topbar,.no-print{display:none!important;}
   .main{width:100%;}
@@ -277,6 +316,7 @@ var STORE = {
   deductions:{},
   leaves:{},
   slips:{},
+  payments:{},
   _n:100
 };
 function nid(){ return "X"+(++STORE._n); }
@@ -418,6 +458,113 @@ async function mockApi(ac,d){
     return {success:true,slip:slip};
   }
 
+  if(ac==="recordPayment"){
+    // d: {orgId, slipId, empId, amount, method, paidAt}
+    if(!STORE.payments[d.orgId]) STORE.payments[d.orgId]=[];
+    // Remove any existing payment for this slip
+    STORE.payments[d.orgId]=STORE.payments[d.orgId].filter(function(p){return p.slipId!==d.slipId;});
+    STORE.payments[d.orgId].push({
+      payId:nid(),orgId:d.orgId,empId:d.empId,slipId:d.slipId,
+      amount:parseFloat(d.amount)||0,method:d.method||"cash",
+      paidAt:d.paidAt||new Date().toISOString()
+    });
+    return {success:true};
+  }
+  if(ac==="undoPayment"){
+    if(STORE.payments[d.orgId])
+      STORE.payments[d.orgId]=STORE.payments[d.orgId].filter(function(p){return p.slipId!==d.slipId;});
+    return {success:true};
+  }
+  if(ac==="getPayments"){
+    var P=STORE.payments[d.orgId]||[];
+    if(d.empId) P=P.filter(function(p){return p.empId===d.empId;});
+    if(d.slipId) P=P.filter(function(p){return p.slipId===d.slipId;});
+    return {success:true,data:P.slice()};
+  }
+  if(ac==="getLedger"){
+    // Returns per-employee balance = sum(netSalary) - sum(payments)
+    var orgId=d.orgId;
+    var slips=ga(STORE.slips,orgId);
+    var pays=STORE.payments[orgId]||[];
+    // Group by empId
+    var empIds={};
+    slips.forEach(function(s){empIds[s.empId]=true;});
+    var rows=[];
+    Object.keys(empIds).forEach(function(empId){
+      if(d.empId&&d.empId!==empId) return;
+      var empSlips=slips.filter(function(s){return s.empId===empId;});
+      var empPays=pays.filter(function(p){return p.empId===empId;});
+      var totalEarned=empSlips.reduce(function(s,x){return s+x.netSalary;},0);
+      var totalPaid=empPays.reduce(function(s,p){return s+p.amount;},0);
+      var balance=parseFloat((totalEarned-totalPaid).toFixed(2));
+      rows.push({empId:empId,totalEarned:totalEarned,totalPaid:totalPaid,balance:balance});
+    });
+    return {success:true,data:rows};
+  }
+  if(ac==="getEmpLedger"){
+    // Detailed ledger for one employee: slip entries + payment entries chronologically
+    var orgId=d.orgId,empId=d.empId;
+    var slips=ga(STORE.slips,orgId).filter(function(s){return s.empId===empId;});
+    var pays=(STORE.payments[orgId]||[]).filter(function(p){return p.empId===empId;});
+    var entries=[];
+    slips.forEach(function(s){
+      entries.push({date:s.generatedAt,description:"Salary "+MONTHS[s.month-1]+" "+s.year,
+        credit:s.netSalary,debit:0,type:"salary",ref:s.slipId});
+    });
+    pays.forEach(function(p){
+      entries.push({date:p.paidAt,description:"Payment ("+p.method+")",
+        credit:0,debit:p.amount,type:"payment",ref:p.payId});
+    });
+    entries.sort(function(a,b){return new Date(a.date)-new Date(b.date);});
+    // compute running balance
+    var bal=0;
+    entries.forEach(function(e){bal+=e.credit-e.debit;e.balance=parseFloat(bal.toFixed(2));});
+    return {success:true,data:entries};
+  }
+  if(ac==="recordAdhocPayment"){
+    // FIFO allocation: distribute payment across oldest unpaid slips first
+    // d: {orgId, empId, amount, method, paidAt, allocations:[{slipId, amount}]}
+    var orgId=d.orgId;
+    if(!STORE.payments[orgId]) STORE.payments[orgId]=[];
+    var paidAt=d.paidAt||new Date().toISOString();
+    var allocs=d.allocations||[];
+    allocs.forEach(function(al){
+      if(!al.amount||al.amount<=0) return;
+      // Remove existing payment for this slip then add new partial/full
+      STORE.payments[orgId]=STORE.payments[orgId].filter(function(p){return p.slipId!==al.slipId;});
+      STORE.payments[orgId].push({
+        payId:nid(),orgId:orgId,empId:d.empId,slipId:al.slipId,
+        amount:parseFloat(al.amount),method:d.method||"cash",paidAt:paidAt,
+        isAdhoc:true,adhocNote:d.note||""
+      });
+    });
+    return {success:true};
+  }
+  if(ac==="getEmpSlipsPending"){
+    // Returns unpaid/partially-paid slips for an employee in chronological order (oldest first)
+    var orgId=d.orgId,empId=d.empId;
+    var slips=ga(STORE.slips,orgId).filter(function(s){return s.empId===empId;});
+    var pays=(STORE.payments[orgId]||[]).filter(function(p){return p.empId===empId;});
+    // Map slipId -> paid amount
+    var paidMap={};
+    pays.forEach(function(p){ paidMap[p.slipId]=(paidMap[p.slipId]||0)+p.amount; });
+    // Sort slips oldest first (by year then month)
+    slips.sort(function(a,b){
+      if(a.year!==b.year) return a.year-b.year;
+      return a.month-b.month;
+    });
+    var result=slips.map(function(s){
+      var paid=paidMap[s.slipId]||0;
+      var outstanding=parseFloat((s.netSalary-paid).toFixed(2));
+      return {
+        slipId:s.slipId,month:s.month,year:s.year,
+        netSalary:s.netSalary,paidAmount:paid,
+        outstanding:outstanding,
+        status:outstanding<=0?"paid":(paid>0?"partial":"unpaid")
+      };
+    }).filter(function(s){return s.outstanding>0;}); // only unpaid/partial
+    return {success:true,data:result};
+  }
   return {success:false,error:"Unknown: "+ac};
 }
 
@@ -472,7 +619,7 @@ function normaliseGasResponse(data){
   return data;
 }
 
-var GET_ACTIONS=["getOrganisations","getEmployees","getSalarySlips","getAdvances","getDeductions"];
+var GET_ACTIONS=["getOrganisations","getEmployees","getSalarySlips","getAdvances","getDeductions","getPayments","getLedger","getEmpLedger","getEmpSlipsPending"];
 
 async function realApi(ac,p){
   p=p||{};
@@ -495,13 +642,21 @@ async function call(ac,p){ return USE_MOCK?mockApi(ac,p||{}):realApi(ac,p||{}); 
 // ── LIVE SLIP CHECK ───────────────────────────────────────────
 // In live mode, we cache fetched slips here so checkExistingSlip works
 var LIVE_SLIPS_CACHE={}; // key: "orgId_empId_month_year" -> slip
+var PAY_CACHE={};       // slipId -> payment object
+var SLIP_REGISTRY={};   // slipId -> slip object (avoids onclick quoting)
 
 async function fetchAndCacheSlip(orgId,empId,month,year){
   var key=orgId+"_"+empId+"_"+month+"_"+year;
   try{
     var res=await call("getSalarySlips",{orgId:orgId,empId:empId,month:month,year:year});
     var slips=res.data||[];
-    if(slips.length>0){LIVE_SLIPS_CACHE[key]=slips[0];return slips[0];}
+    if(slips.length>0){
+      var slip=slips[0];
+      // Ensure orgId is always present on cached slip
+      if(!slip.orgId) slip.orgId=orgId;
+      LIVE_SLIPS_CACHE[key]=slip;
+      return slip;
+    }
     else{delete LIVE_SLIPS_CACHE[key];return null;}
   }catch(e){return null;}
 }
@@ -588,9 +743,10 @@ var NAV=[
   {id:"salary",label:"Salary & Slips",icon:"salary"},
   {id:"advances",label:"Advance Tracker",icon:"advance"},
   {id:"reports",label:"Monthly Report",icon:"report"},
+  {id:"ledger",label:"Salary Ledger",icon:"report"},
   {id:"settings",label:"Connection",icon:"settings"}
 ];
-var TITLES={dashboard:"Dashboard",employees:"Employee Management",salary:"Salary Management",advances:"Advance Tracker",reports:"Monthly Salary Report",settings:"Google Sheets Connection"};
+var TITLES={dashboard:"Dashboard",employees:"Employee Management",salary:"Salary Management",advances:"Advance Tracker",reports:"Monthly Salary Report",ledger:"Salary Ledger",settings:"Google Sheets Connection"};
 
 function renderNav(){
   document.getElementById("sideNav").innerHTML=NAV.map(function(n){
@@ -864,10 +1020,10 @@ function checkExistingSlip(){
   }
 }
 
-function viewExistingSlip(){
+async function viewExistingSlip(){
   var sf=S.sf;
   var existing=existingSlipSync(S.selectedOrg?S.selectedOrg.orgId:"",sf.empId,sf.month,sf.year);
-  if(existing){S.lastSlip=existing;renderSlip(existing);}
+  if(existing){S.lastSlip=existing;await loadPaymentForSlip(existing);renderSlip(existing);}
 }
 
 async function deleteSlip(slipId){
@@ -901,13 +1057,17 @@ async function loadAdvList(empId){
 
 async function generateSlip(){
   var sf=S.sf;
+  if(!S.selectedOrg){alert("No organisation selected.");return;}
   if(!sf.empId){alert("Please select an employee.");return;}
   var btn=document.getElementById("genBtn");
   if(btn){btn.disabled=true;btn.textContent="Generating\u2026";}
   try{
     var lvRes=await call("recordLeave",{orgId:S.selectedOrg.orgId,empId:sf.empId,
       month:sf.month,year:sf.year,leaveDays:sf.leaveDays,leaveType:sf.leaveType});
-    if(lvRes&&lvRes.success===false) throw new Error("Record leave failed: "+(lvRes.error||""));
+    // Non-fatal: if leave record fails (e.g. sheet not yet created in GAS), continue
+    if(lvRes&&lvRes.success===false){
+      console.warn("recordLeave warning:",lvRes.error);
+    }
     var res=await call("generateSalarySlip",{orgId:S.selectedOrg.orgId,empId:sf.empId,
       month:sf.month,year:sf.year,workingDays:sf.workingDays});
     if(!res||res.success===false) throw new Error(res?(res.error||"Failed"):"No response from server");
@@ -930,6 +1090,8 @@ async function generateSlip(){
       var ckey=S.selectedOrg.orgId+"_"+sf.empId+"_"+sf.month+"_"+sf.year;
       LIVE_SLIPS_CACHE[ckey]=slip;
     }
+    // Load payment status for this slip before rendering
+    await loadPaymentForSlip(slip);
     renderSlip(slip); checkExistingSlip(); await loadAdvList(sf.empId);
   }catch(err){
     alert("Error generating salary slip: "+err.message);
@@ -970,7 +1132,414 @@ function slipHtml(slip,orgName){
         '<div class="slip-row bold"><span class="lbl">Gross Salary</span><span class="val">'+fmt(slip.grossSalary)+'</span></div>'+
       '</div>'+dh+
       '<div class="slip-total"><span class="lbl">Net Salary Payable</span><span class="amt">'+fmt(slip.netSalary)+'</span></div>'+
+      '<div class="slip-pay-section" id="slipPaySection_'+slip.slipId+'">'+buildPaySection(slip)+'</div>'+
     '</div></div>';
+}
+
+// ── PAYMENT FUNCTIONS ────────────────────────────────────────
+// (PAY_CACHE and SLIP_REGISTRY declared above)
+
+
+function buildPaySection(slip){
+  // Register slip for safe onclick access
+  SLIP_REGISTRY[slip.slipId]=slip;
+  var sid=slip.slipId;
+  var pay=PAY_CACHE[sid]||null;
+  if(pay){
+    var methodLabel=pay.method==="bank"?"Bank Transfer":"Cash";
+    var methodIcon=pay.method==="bank"?"🏦":"💵";
+    var dateStr=pay.paidAt?new Date(pay.paidAt).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"";
+    return '<div class="pay-status '+(pay.method==="bank"?"paid-bank":"paid-cash")+'">'+
+      '<span style="font-size:16px">'+methodIcon+'</span>'+
+      '<div><strong>Paid via '+methodIcon+' '+methodLabel+'</strong><br><span style="font-size:11px;opacity:.7">'+dateStr+'</span></div>'+
+      '<button class="btn btn-ghost btn-sm no-print" data-action="undo" data-sid="'+sid+'" style="margin-left:auto">Undo</button>'+
+    '</div>';
+  }
+  return '<div class="pay-status unpaid">'+
+    '<span style="font-size:15px">⏳</span>'+
+    '<strong>Not yet paid</strong>&nbsp;<span style="font-weight:400;opacity:.7">— salary is in pending ledger</span>'+
+  '</div>'+
+  '<div class="pay-btns no-print">'+
+    '<button class="btn btn-cash" data-action="pay" data-sid="'+sid+'" data-method="cash">💵 Mark Paid — Cash</button>'+
+    '<button class="btn btn-bank" data-action="pay" data-sid="'+sid+'" data-method="bank">🏦 Mark Paid — Bank</button>'+
+  '</div>';
+}
+
+// Single delegated event listener for pay/undo/ledger-details buttons
+document.addEventListener("click",function(e){
+  // Guard: text nodes and non-element targets don't have .closest()
+  var target=e.target;
+  if(!target||!target.closest) return;
+  var btn=target.closest("[data-action]");
+  if(!btn) return;
+  var action=btn.getAttribute("data-action");
+  // ledger-details: no slip needed
+  if(action==="ledger-details"){
+    var empId=btn.getAttribute("data-empid");
+    var empName=btn.getAttribute("data-empname");
+    if(empId) openEmpLedger(empId,empName||empId);
+    return;
+  }
+  // pay/undo: need slip from registry
+  var sid=btn.getAttribute("data-sid");
+  if(!sid) return;
+  var slip=SLIP_REGISTRY[sid];
+  if(!slip){
+    // slip may not be in registry if page was refreshed; rebuild from lastSlip or cache
+    if(S.lastSlip&&S.lastSlip.slipId===sid) slip=S.lastSlip;
+    else return;
+  }
+  if(action==="pay"){
+    var method=btn.getAttribute("data-method");
+    markPaid(sid,slip.orgId,slip.empId,slip.netSalary,method);
+  } else if(action==="undo"){
+    undoPayment(sid,slip.orgId,slip.empId);
+  }
+});
+
+// Additional delegated handler for adhoc-pay (needs empId from attribute, no slip)
+document.addEventListener("click",function(e){
+  var target=e.target;
+  if(!target||!target.closest) return;
+  var btn=target.closest('[data-action="adhoc-pay"]');
+  if(!btn) return;
+  var empId=btn.getAttribute("data-empid");
+  var empName=btn.getAttribute("data-empname");
+  if(empId) openAdhocPayModal(empId,empName||empId);
+});
+
+async function loadPaymentForSlip(slip){
+  var orgId=slip.orgId||(S.selectedOrg?S.selectedOrg.orgId:null);
+  if(!orgId) return;
+  // Also backfill slip.orgId so markPaid/undo can use it
+  if(!slip.orgId) slip.orgId=orgId;
+  var res=await call("getPayments",{orgId:orgId,slipId:slip.slipId});
+  var pays=res.data||[];
+  if(pays.length>0) PAY_CACHE[slip.slipId]=pays[0];
+  else delete PAY_CACHE[slip.slipId];
+}
+
+async function markPaid(slipId,orgId,empId,amount,method){
+  // Always ensure orgId is set — fall back to selected org if slip.orgId was undefined
+  var resolvedOrgId=orgId||( S.selectedOrg?S.selectedOrg.orgId:null);
+  if(!resolvedOrgId){alert("Cannot record payment: organisation not identified.");return;}
+  var res=await call("recordPayment",{orgId:resolvedOrgId,empId:empId,slipId:slipId,
+    amount:amount,method:method,paidAt:new Date().toISOString()});
+  if(!res||res.success===false){alert("Failed to record payment: "+(res?res.error:"No response"));return;}
+  var paidNow=new Date().toISOString();
+  PAY_CACHE[slipId]={slipId:slipId,empId:empId,orgId:resolvedOrgId,amount:amount,method:method,paidAt:paidNow};
+  refreshPaySection(slipId,S.lastSlip);
+}
+
+async function undoPayment(slipId,orgId,empId){
+  var resolvedOrgId=orgId||(S.selectedOrg?S.selectedOrg.orgId:null);
+  if(!resolvedOrgId){alert("Cannot undo payment: organisation not identified.");return;}
+  if(!confirm("Undo this payment? The salary will return to pending ledger.")) return;
+  await call("undoPayment",{orgId:resolvedOrgId,empId:empId,slipId:slipId});
+  delete PAY_CACHE[slipId];
+  refreshPaySection(slipId,S.lastSlip);
+}
+
+function refreshPaySection(slipId,slip){
+  if(!slip) return;
+  var el=document.getElementById("slipPaySection_"+slipId);
+  if(el) el.innerHTML=buildPaySection(slip);
+  // Also refresh in report modal if open
+  var mel=document.getElementById("modalSlipPay_"+slipId);
+  if(mel) mel.innerHTML=buildPaySection(slip);
+}
+
+// ── ADHOC PAYMENT WITH FIFO ALLOCATION ───────────────────────
+async function openAdhocPayModal(empId, empName){
+  if(!S.selectedOrg){alert("No organisation selected.");return;}
+
+  // Open modal with loading state
+  openModal(
+    "Adhoc Payment — "+empName,
+    '<div id="adhocContent"><div class="empty"><p>Loading pending slips&hellip;</p></div></div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>',
+    true
+  );
+
+  // Fetch pending (unpaid/partial) slips
+  var res=await call("getEmpSlipsPending",{orgId:S.selectedOrg.orgId,empId:empId});
+  if(res&&res.success===false){
+    var el2=document.getElementById("adhocContent");
+    if(el2) el2.innerHTML='<div class="sbox err">❌ Error loading pending slips: '+(res.error||"Unknown")+'</div>';
+    return;
+  }
+  var pending=res.data||[];
+
+  var el=document.getElementById("adhocContent");
+  if(!el) return;
+
+  if(!pending.length){
+    el.innerHTML='<div class="sbox ok">✅ No outstanding salary for '+esc(empName)+'. All slips are fully paid.</div>';
+    document.getElementById("modalFoot").innerHTML='<button class="btn btn-secondary" onclick="closeModal()">Close</button>';
+    return;
+  }
+
+  var totalOutstanding=pending.reduce(function(s,p){return s+p.outstanding;},0);
+
+  el.innerHTML=
+    '<div class="adhoc-panel">'+
+      '<h4>'+
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>'+
+        'Record Adhoc Payment'+
+      '</h4>'+
+      '<div class="form-row c2">'+
+        '<div class="fg"><label>Payment Amount (₹) *</label>'+
+          '<input type="number" id="adhoc_amt" placeholder="Enter amount" min="1" max="'+totalOutstanding+'" step="0.01" oninput="previewFIFO()"/>'+
+        '</div>'+
+        '<div class="fg"><label>Payment Method *</label>'+
+          '<select id="adhoc_method">'+
+            '<option value="cash">💵 Cash</option>'+
+            '<option value="bank">🏦 Bank Transfer</option>'+
+          '</select>'+
+        '</div>'+
+      '</div>'+
+      '<div class="form-row">'+
+        '<div class="fg"><label>Note / Reference (optional)</label>'+
+          '<input id="adhoc_note" placeholder="e.g. Partial payment, salary advance adjusted"/>'+
+        '</div>'+
+      '</div>'+
+      '<div class="hint" style="display:flex;justify-content:space-between;align-items:center">'+
+        '<span>Total Outstanding</span>'+
+        '<span class="mono bold red">'+fmt(totalOutstanding)+'</span>'+
+      '</div>'+
+      '<button class="btn btn-secondary btn-sm" onclick="fillFullAmount('+totalOutstanding+')" style="width:100%;margin-bottom:4px">Pay Full Outstanding ('+fmt(totalOutstanding)+')</button>'+
+    '</div>'+
+    '<div class="adhoc-alloc">'+
+      '<div class="adhoc-alloc-title">FIFO Allocation Preview — oldest months first</div>'+
+      '<div id="fifoPreview">'+
+        pending.map(function(p){
+          return '<div class="alloc-row unpaid" id="ar_'+p.slipId+'">'+
+            '<div>'+
+              '<div class="ar-month">'+MONTHS[p.month-1]+' '+p.year+'</div>'+
+              '<div class="ar-due">Due: '+fmt(p.netSalary)+(p.paidAmount>0?' &nbsp;|&nbsp; Already paid: <span class="green">'+fmt(p.paidAmount)+'</span>':'')+'</div>'+
+            '</div>'+
+            '<div style="text-align:right">'+
+              '<div class="ar-alloc" id="alloc_'+p.slipId+'">—</div>'+
+              '<div class="ar-remain" id="remain_'+p.slipId+'">Pending: '+fmt(p.outstanding)+'</div>'+
+            '</div>'+
+          '</div>';
+        }).join("")+
+      '</div>'+
+      '<div id="fifoSummary"></div>'+
+    '</div>';
+
+  // Store pending in a closure accessible to previewFIFO
+  window._adhocEmpId=empId;
+  window._adhocEmpName=empName;
+  window._adhocPending=pending;
+  window._adhocOrgId=S.selectedOrg.orgId;
+
+  // Update footer
+  document.getElementById("modalFoot").innerHTML=
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>'+
+    '<button class="btn btn-primary" id="adhocSaveBtn" onclick="saveAdhocPayment()" disabled>Save Payment</button>';
+
+  setTimeout(function(){var a=document.getElementById("adhoc_amt");if(a)a.focus();},80);
+}
+
+function fillFullAmount(total){
+  var inp=document.getElementById("adhoc_amt");
+  if(inp){ inp.value=total.toFixed(2); previewFIFO(); }
+}
+
+function previewFIFO(){
+  var inp=document.getElementById("adhoc_amt");
+  var saveBtn=document.getElementById("adhocSaveBtn");
+  if(!inp) return;
+  var amt=parseFloat(inp.value)||0;
+  var pending=window._adhocPending||[];
+
+  // Run FIFO allocation
+  var remaining=amt;
+  var allocations=[];
+  pending.forEach(function(p){
+    var allocated=Math.min(remaining,p.outstanding);
+    allocated=parseFloat(allocated.toFixed(2));
+    allocations.push({slipId:p.slipId,month:p.month,year:p.year,
+      outstanding:p.outstanding,allocated:allocated});
+    remaining=parseFloat((remaining-allocated).toFixed(2));
+  });
+  window._adhocAllocations=allocations;
+
+  // Update preview rows
+  allocations.forEach(function(al){
+    var rowEl=document.getElementById("ar_"+al.slipId);
+    var allocEl=document.getElementById("alloc_"+al.slipId);
+    var remainEl=document.getElementById("remain_"+al.slipId);
+    if(!rowEl) return;
+    rowEl.className="alloc-row "+(al.allocated>=al.outstanding?"fully-paid":al.allocated>0?"partly-paid":"unpaid");
+    if(allocEl) allocEl.textContent=al.allocated>0?"+"+fmt(al.allocated):"—";
+    var afterPay=parseFloat((al.outstanding-al.allocated).toFixed(2));
+    if(remainEl) remainEl.textContent=al.allocated>=al.outstanding?"✅ Fully Settled":"Pending after: "+fmt(afterPay);
+  });
+
+  // Summary
+  var sumEl=document.getElementById("fifoSummary");
+  if(sumEl){
+    if(amt<=0){
+      sumEl.innerHTML="";
+      if(saveBtn) saveBtn.disabled=true;
+    } else {
+      var totalAlloc=allocations.reduce(function(s,a){return s+a.allocated;},0);
+      var totalPending=pending.reduce(function(s,p){return s+p.outstanding;},0);
+      var afterAll=parseFloat((totalPending-totalAlloc).toFixed(2));
+      var isPartial=afterAll>0;
+      sumEl.innerHTML='<div class="fifo-summary'+(isPartial?" partial":"")+'">'+
+        (isPartial
+          ? "⚠️ Partial payment of "+fmt(totalAlloc)+" will be recorded. Remaining outstanding: "+fmt(afterAll)
+          : "✅ Full payment of "+fmt(totalAlloc)+" — all outstanding months cleared")+
+      '</div>';
+      if(saveBtn) saveBtn.disabled=(amt<=0);
+    }
+  }
+}
+
+async function saveAdhocPayment(){
+  var amt=parseFloat(gv("adhoc_amt"))||0;
+  var method=gv("adhoc_method")||"cash";
+  var note=gv("adhoc_note")||"";
+  var orgId=window._adhocOrgId;
+  var empId=window._adhocEmpId;
+  var allocations=window._adhocAllocations||[];
+  var validAllocs=allocations.filter(function(a){return a.allocated>0;});
+
+  if(!amt||amt<=0){alert("Please enter a valid amount.");return;}
+  if(!validAllocs.length){alert("No slips to allocate payment to.");return;}
+
+  var btn=document.getElementById("adhocSaveBtn");
+  if(btn){btn.disabled=true;btn.textContent="Saving…";}
+
+  try{
+    var res=await call("recordAdhocPayment",{
+      orgId:orgId,empId:empId,amount:amt,method:method,
+      note:note,paidAt:new Date().toISOString(),
+      allocations:validAllocs.map(function(a){return {slipId:a.slipId,amount:a.allocated};})
+    });
+    if(!res||res.success===false) throw new Error(res?res.error:"Failed");
+
+    // Update PAY_CACHE for each allocated slip so Salary tab shows updated status
+    var payNow=new Date().toISOString();
+    validAllocs.forEach(function(a){
+      PAY_CACHE[a.slipId]={
+        slipId:a.slipId,empId:empId,orgId:orgId,
+        amount:a.allocated,method:method,paidAt:payNow
+      };
+    });
+    // Also update LIVE_SLIPS_CACHE entries to avoid stale "unpaid" status
+    Object.keys(LIVE_SLIPS_CACHE).forEach(function(k){
+      var s=LIVE_SLIPS_CACHE[k];
+      if(s&&s.empId===empId){
+        // Force re-fetch next time this slip is viewed
+        delete LIVE_SLIPS_CACHE[k];
+      }
+    });
+
+    closeModal();
+    // Reload ledger to reflect new payments
+    await loadLedger();
+  }catch(err){
+    alert("Error saving payment: "+err.message);
+    if(btn){btn.disabled=false;btn.textContent="Save Payment";}
+  }
+}
+
+// ── LEDGER VIEW ──────────────────────────────────────────────
+async function renderLedger(){
+  var el=document.getElementById("mainContent");
+  if(!S.selectedOrg){el.innerHTML='<div class="empty"><p>Select an organisation.</p></div>';return;}
+
+  el.innerHTML=
+    '<div class="card">'+
+      '<div class="card-header"><h3>Salary Ledger &mdash; '+esc(S.selectedOrg.orgName)+'</h3>'+
+        '<button class="btn btn-secondary btn-sm no-print" onclick="window.print()">'+IC.print+' Print</button>'+
+      '</div>'+
+      '<div id="ledgerWrap"><div class="empty"><p>Loading&hellip;</p></div></div>'+
+    '</div>';
+
+  await loadLedger();
+}
+
+async function loadLedger(){
+  var wrap=document.getElementById("ledgerWrap");if(!wrap)return;
+  var res=await Promise.all([
+    call("getLedger",{orgId:S.selectedOrg.orgId}),
+    call("getEmployees",{org:S.selectedOrg.orgId})
+  ]);
+  var rows=res[0].data||[];
+  var emps=res[1].data||[];
+  var empMap={};emps.forEach(function(e){empMap[e.empId]=e;});
+
+  if(!rows.length){
+    wrap.innerHTML='<div class="empty"><p>No salary data yet. Generate salary slips first.</p></div>';return;
+  }
+  // Note: rows already contain correct totals from GAS (reads Payments sheet directly).
+  // No extra payment pre-loading needed here — totals come straight from getLedger.
+
+  var totalBal=rows.reduce(function(s,r){return s+r.balance;},0);
+  var totalEarned=rows.reduce(function(s,r){return s+r.totalEarned;},0);
+  var totalPaid=rows.reduce(function(s,r){return s+r.totalPaid;},0);
+
+  wrap.innerHTML=
+    '<div class="rsum" style="grid-template-columns:repeat(3,1fr)">'+
+      '<div class="rsum-card"><div class="rsum-label">Total Salary Generated</div><div class="rsum-val">'+fmtk(totalEarned)+'</div></div>'+
+      '<div class="rsum-card"><div class="rsum-label">Total Paid</div><div class="rsum-val green">'+fmtk(totalPaid)+'</div></div>'+
+      '<div class="rsum-card"><div class="rsum-label">Outstanding Balance</div><div class="rsum-val '+(totalBal>0?"red":"green")+'">'+fmtk(totalBal)+'</div></div>'+
+    '</div>'+
+    '<table>'+
+      '<thead><tr><th>Employee</th><th>Department</th><th class="tr">Total Earned</th><th class="tr">Total Paid</th><th class="tr">Balance</th><th>Action</th></tr></thead>'+
+      '<tbody>'+rows.map(function(r){
+        var emp=empMap[r.empId]||{name:r.empId,department:"—"};
+        var balCls=r.balance>0?"neg":r.balance<0?"pos":"zero";
+        var balTxt=r.balance>0?"Pending "+fmt(r.balance):r.balance<0?"Overpaid "+fmt(Math.abs(r.balance)):"Settled";
+        return '<tr>'+
+          '<td><div class="flex gap8"><div class="avt">'+inits(emp.name)+'</div><span class="bold">'+esc(emp.name)+'</span></div></td>'+
+          '<td>'+esc(emp.department||"—")+'</td>'+
+          '<td class="tr mono">'+fmt(r.totalEarned)+'</td>'+
+          '<td class="tr mono green">'+fmt(r.totalPaid)+'</td>'+
+          '<td class="tr"><span class="ledger-bal '+balCls+'">'+balTxt+'</span></td>'+
+          '<td><div class="flex gap8">'+
+            '<button class="btn btn-ghost btn-sm" data-action="ledger-details" data-empid="'+r.empId+'" data-empname="'+esc(emp.name)+'">'+IC.eye+' Details</button>'+
+            (r.balance>0?'<button class="btn btn-blue btn-sm" data-action="adhoc-pay" data-empid="'+r.empId+'" data-empname="'+esc(emp.name)+'">💳 Pay</button>':'')+
+          '</div></td>'+
+        '</tr>';
+      }).join("")+'</tbody>'+
+      '<tfoot><tr><td colspan="2" class="bold">Total</td>'+
+        '<td class="tr mono bold">'+fmt(totalEarned)+'</td>'+
+        '<td class="tr mono green bold">'+fmt(totalPaid)+'</td>'+
+        '<td class="tr"><span class="ledger-bal '+(totalBal>0?"neg":"zero")+'">'+fmt(totalBal)+'</span></td>'+
+        '<td></td></tr></tfoot>'+
+    '</table>';
+}
+
+async function openEmpLedger(empId,empName){
+  if(!S.selectedOrg){alert("No organisation selected.");return;}
+  openModal("Ledger — "+empName,
+    '<div id="empLedgerContent"><div class="empty"><p>Loading&hellip;</p></div></div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Close</button>',true);
+  var res=await call("getEmpLedger",{orgId:S.selectedOrg.orgId,empId:empId});
+  var entries=res.data||[];
+  var el=document.getElementById("empLedgerContent");if(!el)return;
+  if(!entries.length){el.innerHTML='<div class="empty"><p>No entries found.</p></div>';return;}
+  el.innerHTML=
+    '<table style="font-size:12px">'+
+      '<thead><tr><th>Date</th><th>Description</th><th class="tr">Earned (₹)</th><th class="tr">Paid (₹)</th><th class="tr">Balance</th></tr></thead>'+
+      '<tbody>'+entries.map(function(e){
+        var dt=e.date?new Date(e.date).toLocaleDateString("en-IN",{day:"2-digit",month:"short",year:"numeric"}):"—";
+        var balCls=e.balance>0?"neg":e.balance<0?"pos":"zero";
+        return '<tr>'+
+          '<td class="muted">'+dt+'</td>'+
+          '<td>'+esc(e.description)+'</td>'+
+          '<td class="tr">'+( e.credit>0?'<span class="ledger-credit">+'+fmt(e.credit)+'</span>':'<span class="muted">—</span>')+'</td>'+
+          '<td class="tr">'+( e.debit>0?'<span class="ledger-debit">−'+fmt(e.debit)+'</span>':'<span class="muted">—</span>')+'</td>'+
+          '<td class="tr"><span class="ledger-bal '+balCls+'">'+fmt(Math.abs(e.balance))+(e.balance>0?" Dr":(e.balance<0?" Cr":""))+'</span></td>'+
+        '</tr>';
+      }).join("")+'</tbody>'+
+    '</table>';
 }
 
 function renderSlip(slip){
@@ -1128,6 +1697,8 @@ async function loadReport(){
     return s;
   });
   S.reportSlips=slips;
+  // Pre-fetch payments for all slips to show status in table
+  await Promise.all(slips.map(function(s){ return loadPaymentForSlip(s); }));
 
   if(!slips.length){
     if(rs)rs.innerHTML="";
@@ -1151,7 +1722,7 @@ async function loadReport(){
 
   rt.innerHTML='<table>'+
     '<thead><tr><th>#</th><th>Employee</th><th>Department</th>'+
-      '<th class="tr">Gross</th><th class="tr">Leave</th><th class="tr">Advance</th><th class="tr">Other</th><th class="tr">Total Ded.</th><th class="tr">Net Payable</th><th></th>'+
+      '<th class="tr">Gross</th><th class="tr">Leave</th><th class="tr">Advance</th><th class="tr">Other</th><th class="tr">Total Ded.</th><th class="tr">Net Payable</th><th>Payment</th><th></th>'+
     '</tr></thead>'+
     '<tbody>'+slips.map(function(s,i){
       return '<tr>'+
@@ -1164,6 +1735,11 @@ async function loadReport(){
         '<td class="tr mono red">'+fmt(s.otherDeductions)+'</td>'+
         '<td class="tr mono red bold">'+fmt(s.totalDeductions)+'</td>'+
         '<td class="tr mono green bold">'+fmt(s.netSalary)+'</td>'+
+        '<td>'+(function(s){
+          var pay=PAY_CACHE[s.slipId];
+          if(pay) return '<span class="badge '+(pay.method==="bank"?"bb":"bg")+'">'+(pay.method==="bank"?"🏦 Bank":"💵 Cash")+'</span>';
+          return '<span class="badge by">⏳ Unpaid</span>';
+        })(s)+'</td>'+
         '<td><button class="btn btn-ghost btn-sm" onclick="viewSlipM('+i+')">'+IC.eye+'</button></td>'+
       '</tr>';
     }).join("")+'</tbody>'+
@@ -1179,8 +1755,9 @@ async function loadReport(){
   '</table>';
 }
 
-function viewSlipM(idx){
+async function viewSlipM(idx){
   var slip=S.reportSlips[idx];if(!slip)return;
+  await loadPaymentForSlip(slip);
   openModal("Salary Slip — "+slip.empName,
     slipHtml(slip,S.selectedOrg?S.selectedOrg.orgName:""),
     '<button class="btn btn-secondary" onclick="closeModal()">Close</button><button class="btn btn-primary btn-sm no-print" onclick="window.print()">'+IC.print+' Print</button>',
@@ -1301,6 +1878,7 @@ async function renderContent(){
   else if(S.view==="salary") await renderSalary();
   else if(S.view==="advances") await renderAdvances();
   else if(S.view==="reports") await renderReports();
+  else if(S.view==="ledger") await renderLedger();
   else if(S.view==="settings") renderSettings();
 }
 
