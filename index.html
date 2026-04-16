@@ -221,15 +221,98 @@ tfoot td{padding:11px 16px;font-weight:600;background:#f7f6f3;border-top:2px sol
 .alloc-row.unpaid{background:#fff;}
 .fifo-summary{background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:10px 14px;margin-top:10px;font-size:13px;color:#166534;}
 .fifo-summary.partial{background:#fffbeb;border-color:#fde68a;color:#854d0e;}
+
+/* ── MOBILE ──────────────────────────────────────────────── */
+.mob-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:#1a1a2e;border-top:1px solid rgba(255,255,255,.1);
+  padding-bottom:env(safe-area-inset-bottom,0px);}
+.mob-nav-inner{display:flex;}
+.mob-nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;padding:8px 2px 6px;color:rgba(255,255,255,.4);font-size:9px;
+  background:none;border:none;cursor:pointer;font-family:"DM Sans",sans-serif;min-height:52px;transition:color .15s;}
+.mob-nav-btn.active{color:#7c9eff;}
+.mob-topbar{display:none;background:#1a1a2e;height:54px;align-items:center;
+  justify-content:space-between;padding:0 16px;position:sticky;top:0;z-index:50;}
+.mob-topbar-title{font-size:15px;font-weight:600;color:#fff;}
+.mob-org-pill{display:flex;align-items:center;gap:6px;background:rgba(255,255,255,.1);
+  border:1px solid rgba(255,255,255,.15);border-radius:20px;padding:5px 10px 5px 8px;
+  cursor:pointer;max-width:160px;}
+.mob-org-pill-dot{width:7px;height:7px;border-radius:50%;background:#f59e0b;flex-shrink:0;}
+.mob-org-pill-dot.live{background:#22c55e;}
+.mob-org-pill-dot.error{background:#ef4444;}
+.mob-org-pill-name{font-size:12px;color:rgba(255,255,255,.85);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;}
+.org-sheet-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;}
+.org-sheet{position:fixed;bottom:0;left:0;right:0;background:#1a1a2e;
+  border-radius:20px 20px 0 0;z-index:201;
+  transform:translateY(100%);transition:transform .28s ease;
+  padding-bottom:env(safe-area-inset-bottom,16px);}
+.org-sheet.open{transform:translateY(0);}
+.org-sheet-handle{width:36px;height:4px;background:rgba(255,255,255,.2);
+  border-radius:2px;margin:14px auto 12px;}
+.org-sheet-ttl{font-size:12px;font-weight:600;color:rgba(255,255,255,.4);
+  letter-spacing:.08em;text-transform:uppercase;padding:0 20px 10px;}
+.org-sheet-item{display:flex;align-items:center;gap:10px;padding:13px 20px;
+  color:#fff;font-size:14px;cursor:pointer;}
+.org-sheet-item.sel{color:#7c9eff;}
+.org-sheet-dot{width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0;}
+.org-sheet-dot.live{background:#22c55e;}
+.org-sheet-add{display:flex;align-items:center;gap:10px;padding:13px 20px;
+  color:rgba(255,255,255,.5);font-size:14px;cursor:pointer;
+  border-top:1px solid rgba(255,255,255,.08);margin-top:6px;}
+.tbl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+
+@media(max-width:768px){
+  .sidebar{display:none!important;}
+  .topbar{display:none!important;}
+  .mob-topbar{display:flex!important;}
+  .mob-nav{display:block!important;}
+  .main{padding-bottom:calc(52px + env(safe-area-inset-bottom,0px));}
+  .content{padding:14px 14px 8px;}
+  .card{border-radius:8px;margin-bottom:12px;}
+  .card-header{padding:12px 14px;}
+  .stats-grid{grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px;}
+  .stat-value{font-size:18px;}
+  .two-col{grid-template-columns:1fr;gap:12px;}
+  .c2{grid-template-columns:1fr;}
+  .c3{grid-template-columns:1fr;}
+  .fg input,.fg select,.fg textarea{font-size:16px!important;padding:10px 12px;}
+  .overlay{padding:0;align-items:flex-end;}
+  .modal{border-radius:16px 16px 0 0;max-height:92vh;max-width:100%;}
+  .rsum{grid-template-columns:1fr 1fr;gap:8px;padding:12px 14px;}
+  .report-filter{padding:10px 14px;gap:8px;}
+  .url-row{flex-direction:column;}
+  .pay-btns{flex-direction:column;}
+}
 @media print{
-  .sidebar,.topbar,.no-print{display:none!important;}
-  .main{width:100%;}
+  .sidebar,.topbar,.mob-nav,.mob-topbar,.no-print{display:none!important;}
+  .main{padding-bottom:0!important;}
   .content{padding:0;}
   .slip{border:none;}
 }
+
 </style>
 </head>
 <body>
+<!-- Mobile top bar -->
+<div class="mob-topbar" id="mobTopbar">
+  <div class="mob-topbar-title" id="mobPageTitle">Dashboard</div>
+  <div class="mob-org-pill" id="mobOrgPill">
+    <div class="mob-org-pill-dot" id="mobOrgDot"></div>
+    <div class="mob-org-pill-name" id="mobOrgName">Loading...</div>
+  </div>
+</div>
+<!-- Mobile org sheet -->
+<div class="org-sheet-bg hidden" id="orgSheetBg"></div>
+<div class="org-sheet" id="orgSheet">
+  <div class="org-sheet-handle"></div>
+  <div class="org-sheet-ttl">Switch Organisation</div>
+  <div id="orgSheetList"></div>
+  <div class="org-sheet-add" id="orgSheetAdd">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+    Add New Organisation
+  </div>
+</div>
 <div class="app">
   <aside class="sidebar">
     <div class="sidebar-brand">
@@ -272,6 +355,8 @@ tfoot td{padding:11px 16px;font-weight:600;background:#f7f6f3;border-top:2px sol
     </div>
   </div>
 </div>
+<!-- Mobile bottom nav -->
+<nav class="mob-nav" id="mobNav"><div class="mob-nav-inner" id="mobNavInner"></div></nav>
 
 <div class="overlay hidden" id="modalOverlay">
   <div class="modal" id="modalBox">
@@ -287,10 +372,27 @@ tfoot td{padding:11px 16px;font-weight:600;background:#f7f6f3;border-top:2px sol
 </div>
 
 <script>
-// ── CONFIG (persisted in localStorage) ───────────────────────
+// ── CONFIG ──────────────────────────────────────────────────
+// Single-org config (backward compat): hr_cfg = {url, mode}
 var _cfg = (function(){ try{ return JSON.parse(localStorage.getItem("hr_cfg")||"{}"); }catch(e){ return {}; } })();
 var GAS_URL  = _cfg.url  || "";
-var USE_MOCK = (_cfg.mode !== "live");   // default: demo
+var USE_MOCK = (_cfg.mode !== "live");
+
+// Multi-org config: hr_orgs = { orgId: {name, url, mode} }
+function loadOrgCfg(){ try{ return JSON.parse(localStorage.getItem("hr_orgs")||"{}"); }catch(e){ return {}; } }
+function saveOrgCfg(cfg){ localStorage.setItem("hr_orgs",JSON.stringify(cfg)); }
+var ORG_CFG = loadOrgCfg();
+
+// Switch active connection to the given org
+function setActiveOrg(orgId){
+  var cfg=ORG_CFG[orgId]||{};
+  if(cfg.url){
+    GAS_URL=cfg.url;
+    USE_MOCK=(cfg.mode!=="live");
+  }
+  // Also keep _cfg in sync for backward compat
+  if(cfg.url){ _cfg.url=cfg.url; _cfg.mode=cfg.mode||"live"; }
+}
 
 var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 var CY = new Date().getFullYear();
@@ -637,7 +739,32 @@ async function realApi(ac,p){
   }
 }
 
-async function call(ac,p){ return USE_MOCK?mockApi(ac,p||{}):realApi(ac,p||{}); }
+async function call(ac,p){
+  // Always route through real API when a URL is configured for the current org
+  return USE_MOCK ? mockApi(ac,p||{}) : realApi(ac,p||{});
+}
+
+// callWithUrl: direct call to a specific GAS URL (used for new-org creation)
+async function callWithUrl(url,ac,p){
+  p=p||{};p.action=ac;
+  try{
+    if(GET_ACTIONS.indexOf(ac)>-1){
+      var clean={};
+      Object.keys(p).forEach(function(k){if(p[k]!==undefined&&p[k]!==null&&p[k]!=="")clean[k]=p[k];});
+      var qs=Object.keys(clean).map(function(k){return encodeURIComponent(k)+"="+encodeURIComponent(clean[k]);}).join("&");
+      var r=await fetch(url+"?"+qs,{method:"GET"});
+      var data=await r.json();
+      return normaliseGasResponse(data);
+    } else {
+      var r=await fetch(url,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(p)});
+      var data=await r.json();
+      return normaliseGasResponse(data);
+    }
+  }catch(e){
+    console.error("callWithUrl error ["+ac+"]:",e);
+    return {success:false,error:e.message};
+  }
+}
 
 // ── LIVE SLIP CHECK ───────────────────────────────────────────
 // In live mode, we cache fetched slips here so checkExistingSlip works
@@ -726,13 +853,16 @@ function updateConn(){
   var ttl=document.getElementById("connTitle");
   var sub=document.getElementById("connSub");
   if(!dot) return;
+  var orgName=S.selectedOrg?" — "+S.selectedOrg.orgName:"";
   if(USE_MOCK){
-    dot.className="conn-dot demo";ttl.textContent="Demo Mode";sub.textContent="Local data only";
+    dot.className="conn-dot demo";ttl.textContent="Demo Mode";sub.textContent="Local data only"+orgName;
   } else if(S.connOk){
-    dot.className="conn-dot live";ttl.textContent="Connected";sub.textContent="Google Sheets live";
+    dot.className="conn-dot live";ttl.textContent="Connected";sub.textContent="Google Sheets live"+orgName;
   } else {
     dot.className="conn-dot error";ttl.textContent="Not Connected";sub.textContent=GAS_URL?"Check URL / CORS":"URL not configured";
   }
+  // Sync mobile dot
+  if(typeof updateMobOrgDot==="function") updateMobOrgDot();
 }
 document.getElementById("connSettingsBtn").addEventListener("click",function(){setView("settings");});
 
@@ -748,11 +878,38 @@ var NAV=[
 ];
 var TITLES={dashboard:"Dashboard",employees:"Employee Management",salary:"Salary Management",advances:"Advance Tracker",reports:"Monthly Salary Report",ledger:"Salary Ledger",settings:"Google Sheets Connection"};
 
+var MOB_NAV=[
+  {id:"dashboard",label:"Home",icon:"org"},
+  {id:"employees",label:"Staff",icon:"employee"},
+  {id:"salary",label:"Salary",icon:"salary"},
+  {id:"advances",label:"Advances",icon:"advance"},
+  {id:"reports",label:"Report",icon:"report"},
+  {id:"settings",label:"Settings",icon:"settings"}
+];
+
 function renderNav(){
   document.getElementById("sideNav").innerHTML=NAV.map(function(n){
     return '<div class="nav-item'+(S.view===n.id?" active":"")
       +'" onclick="setView(\''+n.id+'\')">'+IC[n.icon]+" "+n.label+"</div>";
   }).join("");
+  var mn=document.getElementById("mobNavInner");
+  if(mn){
+    var m="";
+    for(var i=0;i<MOB_NAV.length;i++){
+      var n=MOB_NAV[i];
+      var act=S.view===n.id?" active":"";
+      m+='<button class="mob-nav-btn'+act+'" data-view="'+n.id+'" aria-label="'+n.label+'">'+IC[n.icon]+'<span>'+n.label+'</span></button>';
+    }
+    mn.innerHTML=m;
+  }
+}
+
+function setView(v){
+  S.view=v;
+  var title=TITLES[v]||v;
+  document.getElementById("pageTitle").textContent=title;
+  var mt=document.getElementById("mobPageTitle");if(mt)mt.textContent=title;
+  renderNav();renderContent();
 }
 
 function setView(v){
@@ -769,30 +926,136 @@ function renderOrgSelect(){
   }).join("");
   sel.onchange=function(){onOrgChange(this.value);};
   document.getElementById("orgBadge").textContent=S.selectedOrg?S.selectedOrg.orgName:"";
+  // Mobile pill
+  var mn=document.getElementById("mobOrgName");if(mn)mn.textContent=S.selectedOrg?S.selectedOrg.orgName:"Select Org";
+  updateMobOrgDot();
+  renderOrgSheet();
+}
+
+function updateMobOrgDot(){
+  var dot=document.getElementById("mobOrgDot");if(!dot)return;
+  var cfg=S.selectedOrg?(ORG_CFG[S.selectedOrg.orgId]||{}):{};
+  if(cfg.mode==="live"&&S.connOk)dot.className="mob-org-pill-dot live";
+  else if(cfg.mode==="live")dot.className="mob-org-pill-dot error";
+  else dot.className="mob-org-pill-dot";
+}
+
+function renderOrgSheet(){
+  var list=document.getElementById("orgSheetList");if(!list)return;
+  list.innerHTML=S.orgs.map(function(o){
+    var cfg=ORG_CFG[o.orgId]||{};
+    var dotCls=cfg.mode==="live"?"org-sheet-dot live":"org-sheet-dot";
+    var isActive=S.selectedOrg&&S.selectedOrg.orgId===o.orgId;
+    return '<div class="org-sheet-item'+(isActive?" sel":"")+'" data-action="mob-switch-org" data-orgid="'+o.orgId+'">'+
+      '<div class="'+dotCls+'"></div><span>'+esc(o.orgName)+'</span>'+
+      (isActive?'<svg style="margin-left:auto" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c9eff" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>':"")+
+    '</div>';
+  }).join("");
+}
+
+function openOrgSheet(){
+  renderOrgSheet();
+  var bg=document.getElementById("orgSheetBg"),sh=document.getElementById("orgSheet");
+  if(bg)bg.classList.remove("hidden");if(sh)sh.classList.add("open");
+}
+function closeOrgSheet(){
+  var bg=document.getElementById("orgSheetBg"),sh=document.getElementById("orgSheet");
+  if(bg)bg.classList.add("hidden");if(sh)sh.classList.remove("open");
 }
 function onOrgChange(id){
   S.selectedOrg=null;
   for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===id){S.selectedOrg=S.orgs[i];break;}}
   S.lastSlip=null;S.sf.empId="";
+  // Clear caches + switch connection
+  LIVE_SLIPS_CACHE={};PAY_CACHE={};SLIP_REGISTRY={};
+  if(S.selectedOrg){
+    setActiveOrg(S.selectedOrg.orgId);
+    localStorage.setItem("hr_last_org",S.selectedOrg.orgId);
+    var cfg=ORG_CFG[S.selectedOrg.orgId]||{};
+    S.connOk=!!(cfg.url&&cfg.mode==="live");
+  }
   document.getElementById("orgBadge").textContent=S.selectedOrg?S.selectedOrg.orgName:"";
+  updateConn();
   renderContent();
 }
 function openOrgModal(){
   openModal("Add Organisation",
-    '<div class="fg"><label>Organisation Name *</label><input id="newOrgName" placeholder="e.g. Acme Corp"/></div>',
+    '<div class="fg" style="margin-bottom:12px"><label>Organisation Name *</label><input id="newOrgName" placeholder="e.g. Acme Corp"/></div>'+
+    '<div class="fg"><label>Apps Script URL (optional — add later in Connection Settings)</label>'+
+    '<input type="url" id="newOrgUrl" class="mono" style="font-size:12px" placeholder="https://script.google.com/macros/s/.../exec"/></div>',
     '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="orgSaveBtn" onclick="saveOrg()">Save</button>'
   );
   setTimeout(function(){var el=document.getElementById("newOrgName");if(el)el.focus();},60);
 }
 async function saveOrg(){
-  var name=gv("newOrgName").trim();if(!name){alert("Name required.");return;}
+  var name=gv("newOrgName").trim();
+  var url=(gv("newOrgUrl")||"").trim();
+  if(!name){alert("Name required.");return;}
   var btn=document.getElementById("orgSaveBtn");if(btn)btn.disabled=true;
-  var res=await call("addOrganisation",{orgName:name});
+
+  // If URL provided, use it to create the org directly in that sheet
+  var res;
+  if(url){
+    res=await callWithUrl(url,"addOrganisation",{orgName:name});
+  } else {
+    res=await call("addOrganisation",{orgName:name});
+  }
+  if(!res||res.success===false){
+    alert("Error: "+(res?res.error:"Failed"));
+    if(btn)btn.disabled=false;return;
+  }
+  var newOrgId=res.orgId;
+
+  // Store per-org config
+  ORG_CFG[newOrgId]={name:name,url:url,mode:url?"live":"demo"};
+  saveOrgCfg(ORG_CFG);
+
+  // Refresh org list
   var r=await call("getOrganisations");
   S.orgs=r.data||[];
-  S.selectedOrg=null;for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===res.orgId){S.selectedOrg=S.orgs[i];break;}}
+  // Ensure new org is in list
+  var found=false;for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===newOrgId){found=true;break;}}
+  if(!found)S.orgs.push({orgId:newOrgId,orgName:name});
+
+  S.selectedOrg=null;
+  for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===newOrgId){S.selectedOrg=S.orgs[i];break;}}
   if(!S.selectedOrg)S.selectedOrg=S.orgs[S.orgs.length-1];
+
+  if(S.selectedOrg){setActiveOrg(S.selectedOrg.orgId);S.connOk=!!url;}
+  updateConn();
   renderOrgSelect();closeModal();renderContent();
+}
+
+// Edit org connection
+var _editingOrgId=null;
+function openEditOrgModal(orgId){
+  var o=null;for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===orgId){o=S.orgs[i];break;}}
+  if(!o)return;
+  _editingOrgId=orgId;
+  var cfg=ORG_CFG[orgId]||{};
+  openModal("Edit — "+o.orgName,
+    '<div class="fg" style="margin-bottom:12px"><label>Organisation Name</label><input id="editOrgName" value="'+esc(o.orgName)+'"/></div>'+
+    '<div class="fg"><label>Apps Script URL</label>'+
+    '<input type="url" id="editOrgUrl" class="mono" style="font-size:12px" value="'+esc(cfg.url||"")+'"/></div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveEditOrg()">Save</button>'
+  );
+}
+async function saveEditOrg(){
+  var orgId=_editingOrgId;if(!orgId)return;
+  var name=(document.getElementById("editOrgName")||{}).value||"";
+  var url=((document.getElementById("editOrgUrl")||{}).value||"").trim();
+  name=name.trim();if(!name){alert("Name required.");return;}
+  for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===orgId){S.orgs[i].orgName=name;break;}}
+  ORG_CFG[orgId]={name:name,url:url,mode:url?"live":"demo"};
+  saveOrgCfg(ORG_CFG);
+  if(S.selectedOrg&&S.selectedOrg.orgId===orgId){
+    S.selectedOrg.orgName=name;
+    setActiveOrg(orgId);
+    S.connOk=!!(url);
+    updateConn();
+  }
+  renderOrgSelect();closeModal();
+  if(S.view==="settings")renderSettings();
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────
@@ -806,7 +1069,7 @@ async function renderDashboard(){
       '<div class="stat-card"><div class="stat-label">Monthly Payroll</div><div class="stat-value" id="dPay" style="font-size:18px">—</div><div class="stat-sub">Gross</div></div>'+
       '<div class="stat-card"><div class="stat-label">Advance Outstanding</div><div class="stat-value red" id="dOut" style="font-size:18px">—</div></div>'+
     '</div>'+
-    '<div class="card"><div class="card-header"><h3>Employee Overview — '+esc(S.selectedOrg.orgName)+'</h3></div><div id="dTable"><div class="empty"><p>Loading…</p></div></div></div>';
+    '<div class="card"><div class="card-header"><h3>Employee Overview — '+esc(S.selectedOrg.orgName)+'</h3></div><div class="tbl-scroll"><div id="dTable"><div class="empty"><p>Loading…</p></div></div></div></div>';
 
   var res=await Promise.all([call("getEmployees",{org:S.selectedOrg.orgId}),call("getAdvances",{orgId:S.selectedOrg.orgId})]);
   var emps=res[0].data||[],advs=res[1].data||[];
@@ -832,7 +1095,7 @@ async function renderEmployees(){
   if(!S.selectedOrg){el.innerHTML='<div class="empty"><p>Select an organisation.</p></div>';return;}
   el.innerHTML='<div class="card"><div class="card-header"><h3>Employees — '+esc(S.selectedOrg.orgName)+'</h3>'+
     '<button class="btn btn-primary btn-sm no-print" onclick="openEmpModal()">'+IC.plus+' Add Employee</button></div>'+
-    '<div id="empTable"><div class="empty"><p>Loading…</p></div></div></div>';
+    '<div class="tbl-scroll"><div id="empTable"><div class="empty"><p>Loading…</p></div></div></div></div>';
   await loadEmpTable();
 }
 async function loadEmpTable(){
@@ -1165,48 +1428,10 @@ function buildPaySection(slip){
   '</div>';
 }
 
-// Single delegated event listener for pay/undo/ledger-details buttons
-document.addEventListener("click",function(e){
-  // Guard: text nodes and non-element targets don't have .closest()
-  var target=e.target;
-  if(!target||!target.closest) return;
-  var btn=target.closest("[data-action]");
-  if(!btn) return;
-  var action=btn.getAttribute("data-action");
-  // ledger-details: no slip needed
-  if(action==="ledger-details"){
-    var empId=btn.getAttribute("data-empid");
-    var empName=btn.getAttribute("data-empname");
-    if(empId) openEmpLedger(empId,empName||empId);
-    return;
-  }
-  // pay/undo: need slip from registry
-  var sid=btn.getAttribute("data-sid");
-  if(!sid) return;
-  var slip=SLIP_REGISTRY[sid];
-  if(!slip){
-    // slip may not be in registry if page was refreshed; rebuild from lastSlip or cache
-    if(S.lastSlip&&S.lastSlip.slipId===sid) slip=S.lastSlip;
-    else return;
-  }
-  if(action==="pay"){
-    var method=btn.getAttribute("data-method");
-    markPaid(sid,slip.orgId,slip.empId,slip.netSalary,method);
-  } else if(action==="undo"){
-    undoPayment(sid,slip.orgId,slip.empId);
-  }
-});
+// (Click delegation handled by unified listener below)
 
 // Additional delegated handler for adhoc-pay (needs empId from attribute, no slip)
-document.addEventListener("click",function(e){
-  var target=e.target;
-  if(!target||!target.closest) return;
-  var btn=target.closest('[data-action="adhoc-pay"]');
-  if(!btn) return;
-  var empId=btn.getAttribute("data-empid");
-  var empName=btn.getAttribute("data-empname");
-  if(empId) openAdhocPayModal(empId,empName||empId);
-});
+// (adhoc-pay handled by unified listener)
 
 async function loadPaymentForSlip(slip){
   var orgId=slip.orgId||(S.selectedOrg?S.selectedOrg.orgId:null);
@@ -1767,58 +1992,64 @@ async function viewSlipM(idx){
 // ── SETTINGS ─────────────────────────────────────────────────
 function renderSettings(){
   var el=document.getElementById("mainContent");
-  var isLive=!USE_MOCK,hasUrl=!!GAS_URL;
+  var orgId=S.selectedOrg?S.selectedOrg.orgId:null;
+  var orgCfg=orgId?(ORG_CFG[orgId]||{}):{};
+  var isLive=(orgCfg.mode==="live"),hasUrl=!!orgCfg.url;
   var connHtml="";
-  if(isLive&&S.connOk)connHtml='<div class="sbox ok">✅ <strong>Connected to Google Sheets.</strong> All data is live.</div>';
-  else if(isLive&&hasUrl)connHtml='<div class="sbox err">❌ Connection failed. Verify the URL and deployment settings.</div>';
+  if(isLive&&S.connOk)connHtml='<div class="sbox ok">Connected to Google Sheets.</div>';
+  else if(isLive&&hasUrl)connHtml='<div class="sbox err">Connection failed. Verify URL and deployment settings.</div>';
+
+  // Org management list
+  var orgListHtml=S.orgs.map(function(o){
+    var cfg=ORG_CFG[o.orgId]||{};
+    var lbl=cfg.mode==="live"?"Live":"Demo";
+    var isActive=orgId===o.orgId;
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #f5f5f5'+(isActive?";background:#f0f6ff":"")+'">'+
+      '<div><div class="bold" style="font-size:13px">'+esc(o.orgName)+'</div>'+
+      '<div class="muted">'+lbl+(cfg.url?' &bull; '+esc(cfg.url.slice(0,45))+'...':'')+'</div></div>'+
+      '<button class="btn btn-ghost btn-sm" data-action="edit-org" data-orgid="'+o.orgId+'">'+IC.edit+'</button>'+
+    '</div>';
+  }).join("") || '<div class="empty" style="padding:20px"><p>No organisations yet.</p></div>';
 
   el.innerHTML=
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-header"><h3>Organisations</h3><button class="btn btn-primary btn-sm" onclick="openOrgModal()">'+IC.plus+' Add Org</button></div>'+
+      orgListHtml+
+    '</div>'+
+    (orgId?
     '<div class="card">'+
-      // ── Data Source
       '<div class="settings-section">'+
-        '<h3>Data Source</h3>'+
-        '<p>Switch between demo mode (local data only, resets on refresh) and Google Sheets (live persistent data via Apps Script).</p>'+
+        '<h3>Connection — '+esc(S.selectedOrg.orgName)+'</h3>'+
+        '<p>Switch between Demo Mode and Google Sheets for this organisation.</p>'+
         '<div class="mode-toggle">'+
-          '<div class="mode-opt '+(USE_MOCK?"sel":"") +'" id="optDemo">'+
-            '<div class="mo-icon">⚡</div>'+
-            '<div class="mo-title">Demo Mode</div>'+
-            '<div class="mo-sub">No setup needed</div>'+
-          '</div>'+
-          '<div class="mode-opt '+(!USE_MOCK?"sel":"")+'" id="optLive">'+
-            '<div class="mo-icon">🔗</div>'+
-            '<div class="mo-title">Google Sheets</div>'+
-            '<div class="mo-sub">Live persistent data</div>'+
-          '</div>'+
+          '<div class="mode-opt '+(USE_MOCK?"sel":"")+'" id="optDemo"><div class="mo-icon">⚡</div><div class="mo-title">Demo Mode</div><div class="mo-sub">Local only</div></div>'+
+          '<div class="mode-opt '+(!USE_MOCK?"sel":"")+'" id="optLive"><div class="mo-icon">🔗</div><div class="mo-title">Google Sheets</div><div class="mo-sub">Live data</div></div>'+
         '</div>'+
       '</div>'+
-      // ── URL Input
       '<div class="settings-section" id="gasSection" style="'+(USE_MOCK?"opacity:.5;pointer-events:none":"")+'">'+
-        '<h3>Apps Script Web App URL</h3>'+
-        '<p>Paste the deployed Web App URL. It is saved locally in your browser and never sent anywhere else.</p>'+
+        '<h3>Apps Script URL — '+esc(S.selectedOrg.orgName)+'</h3>'+
+        '<p>Each organisation links to its own Google Sheet deployment.</p>'+
         '<div class="url-row">'+
-          '<input type="url" id="gasInput" placeholder="https://script.google.com/macros/s/…/exec" value="'+esc(GAS_URL)+'"/>'+
+          '<input type="url" id="gasInput" class="mono" style="font-size:12px" placeholder="https://script.google.com/macros/s/.../exec" value="'+esc(orgCfg.url||"")+'"/>'+
           '<button class="btn btn-primary" onclick="testConn()">Test &amp; Save</button>'+
         '</div>'+
-        '<div id="connResult">'+(connHtml)+'</div>'+
+        '<div id="connResult">'+connHtml+'</div>'+
         (hasUrl&&isLive?'<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="disconn()">Disconnect</button>':'')+
       '</div>'+
-      // ── Guide
       '<div class="settings-section">'+
         '<h3>Setup Guide</h3>'+
-        '<p>Follow these steps to connect your Google Sheet:</p>'+
+        '<p>Each organisation needs its own Google Sheet:</p>'+
         '<ol class="step-list">'+
-          '<li>Open <strong>Google Sheets</strong>, create a new blank spreadsheet (e.g. "HR Manager Data").</li>'+
-          '<li>Go to <strong>Extensions → Apps Script</strong>. Delete existing code and paste the full <code>HR_AppScript.gs</code> content.</li>'+
-          '<li>In the script editor, select function <code>setupMasterSheets</code> and click <strong>Run ▶</strong>. Authorise when prompted. This creates all sheet tabs.</li>'+
-          '<li>Click <strong>Deploy → New Deployment</strong>. Choose type <em>Web App</em>. Set <em>Execute as</em> = <strong>Me</strong>, <em>Who has access</em> = <strong>Anyone</strong>. Click Deploy.</li>'+
-          '<li>Copy the <strong>Web App URL</strong> from the dialog (starts with <code>https://script.google.com/macros/s/</code>).</li>'+
-          '<li>Switch to <em>Google Sheets</em> mode above, paste the URL, click <strong>Test &amp; Save</strong>.</li>'+
+          '<li>Create a new Google Sheet, open <strong>Extensions &rarr; Apps Script</strong>.</li>'+
+          '<li>Paste the full <code>HR_AppScript.gs</code> content and run <code>setupMasterSheets</code>.</li>'+
+          '<li><strong>Deploy &rarr; New Deployment</strong> &rarr; Web App. Execute as: Me. Access: Anyone.</li>'+
+          '<li>Copy the URL, paste above, click <strong>Test &amp; Save</strong>.</li>'+
         '</ol>'+
-        '<div class="sbox warn" style="margin-top:6px">⚠️ After editing Apps Script code you must create a <strong>New Deployment</strong> each time — re-deploying generates a new URL. Paste the updated URL here.</div>'+
       '</div>'+
-    '</div>';
+    '</div>'
+    :'<div class="sbox info">Select an organisation to configure its connection.</div>'
+    );
 
-  // attach onclick via addEventListener to avoid inline quoting issues
   var optDemo=document.getElementById("optDemo");
   var optLive=document.getElementById("optLive");
   if(optDemo)optDemo.addEventListener("click",function(){selectMode("demo");});
@@ -1826,7 +2057,13 @@ function renderSettings(){
 }
 
 function selectMode(mode){
-  USE_MOCK=(mode==="demo");
+  var orgId=S.selectedOrg?S.selectedOrg.orgId:null;
+  if(!orgId)return;
+  USE_MOCK=(mode!=="live");
+  var cfg=ORG_CFG[orgId]||{};
+  cfg.mode=mode;if(mode==="demo")cfg.url="";
+  ORG_CFG[orgId]=cfg;saveOrgCfg(ORG_CFG);
+  // Also keep _cfg in sync
   _cfg.mode=mode;localStorage.setItem("hr_cfg",JSON.stringify(_cfg));
   var od=document.getElementById("optDemo"),ol=document.getElementById("optLive");
   var gs=document.getElementById("gasSection");
@@ -1839,35 +2076,43 @@ function selectMode(mode){
 async function testConn(){
   var url=(document.getElementById("gasInput")||{}).value||"";
   url=url.trim();
+  var orgId=S.selectedOrg?S.selectedOrg.orgId:null;
+  if(!orgId){showCR("err","No organisation selected.");return;}
   if(!url){showCR("err","Please enter the Apps Script URL.");return;}
-  if(!url.startsWith("https://script.google.com")){showCR("err","URL must start with https://script.google.com/…");return;}
-  showCR("info","🔄 Testing connection…");
+  if(!url.startsWith("https://script.google.com")){showCR("err","URL must start with https://script.google.com");return;}
+  showCR("info","Testing connection...");
   try{
     var r=await fetch(url+"?action=getOrganisations");
     if(!r.ok)throw new Error("HTTP "+r.status);
     var data=await r.json();
     if(!data||data.success===false)throw new Error(data.error||"Bad response");
+    // Save per-org
+    ORG_CFG[orgId]={name:S.selectedOrg.orgName,url:url,mode:"live"};
+    saveOrgCfg(ORG_CFG);
     GAS_URL=url;USE_MOCK=false;S.connOk=true;
     _cfg.url=url;_cfg.mode="live";localStorage.setItem("hr_cfg",JSON.stringify(_cfg));
     updateConn();
-    showCR("ok","✅ Connected! Google Sheets is now your data source. Switch to another tab to start using live data.");
+    showCR("ok","Connected! Data now reads from and writes to this Google Sheet.");
     var gs=document.getElementById("gasSection");if(gs)gs.style.cssText="";
     var od=document.getElementById("optDemo"),ol=document.getElementById("optLive");
     if(od)od.className="mode-opt";if(ol)ol.className="mode-opt sel";
   }catch(e){
     S.connOk=false;updateConn();
-    showCR("err","❌ Failed: "+e.message+". Make sure deployment is set to 'Anyone can access'.");
+    showCR("err","Failed: "+e.message+". Ensure deployment is set to Anyone can access.");
   }
 }
 
 function showCR(type,msg){var el=document.getElementById("connResult");if(el)el.innerHTML='<div class="sbox '+type+'">'+msg+'</div>';}
 
 function disconn(){
-  if(!confirm("Disconnect from Google Sheets and switch to Demo Mode?"))return;
+  var orgId=S.selectedOrg?S.selectedOrg.orgId:null;
+  if(!confirm("Disconnect this organisation from Google Sheets?"))return;
   GAS_URL="";USE_MOCK=true;S.connOk=false;
+  if(orgId){ORG_CFG[orgId]={name:S.selectedOrg.orgName,url:"",mode:"demo"};saveOrgCfg(ORG_CFG);}
   _cfg={};localStorage.removeItem("hr_cfg");
   updateConn();renderSettings();
 }
+
 
 // ── ROUTER ────────────────────────────────────────────────────
 async function renderContent(){
@@ -1884,15 +2129,83 @@ async function renderContent(){
 
 // ── INIT ──────────────────────────────────────────────────────
 async function init(){
+  // Wire mobile pill
+  var pill=document.getElementById("mobOrgPill");
+  if(pill)pill.addEventListener("click",openOrgSheet);
+  var shBg=document.getElementById("orgSheetBg");
+  if(shBg)shBg.addEventListener("click",closeOrgSheet);
+  var shAdd=document.getElementById("orgSheetAdd");
+  if(shAdd)shAdd.addEventListener("click",function(){closeOrgSheet();openOrgModal();});
+
+  // Restore last org from ORG_CFG
+  var cfgKeys=Object.keys(ORG_CFG);
+  if(cfgKeys.length){
+    var lastOrgId=localStorage.getItem("hr_last_org");
+    var restoredOrg=null;
+    if(lastOrgId&&ORG_CFG[lastOrgId])restoredOrg={orgId:lastOrgId,orgName:ORG_CFG[lastOrgId].name||lastOrgId};
+    else restoredOrg={orgId:cfgKeys[0],orgName:ORG_CFG[cfgKeys[0]].name||cfgKeys[0]};
+    S.selectedOrg=restoredOrg;
+    setActiveOrg(restoredOrg.orgId);
+    var cfg=ORG_CFG[restoredOrg.orgId]||{};
+    S.connOk=!!(cfg.url&&cfg.mode==="live");
+  }
+
   if(!USE_MOCK&&GAS_URL) S.connOk=true;
   updateConn();
+
   var r=await call("getOrganisations");
   if(!USE_MOCK&&(!r||r.success===false)){S.connOk=false;updateConn();}
-  S.orgs=r.data||[];
-  S.selectedOrg=S.orgs[0]||null;
+  var liveOrgs=r.data||[];
+
+  // Merge: GAS orgs + any other orgs from ORG_CFG (different GAS URLs)
+  var merged={};
+  liveOrgs.forEach(function(o){merged[o.orgId]=o;});
+  Object.keys(ORG_CFG).forEach(function(oid){
+    if(!merged[oid]&&ORG_CFG[oid].name)merged[oid]={orgId:oid,orgName:ORG_CFG[oid].name};
+  });
+  S.orgs=Object.values(merged);
+  if(!S.orgs.length)S.orgs=liveOrgs;
+
+  if(!S.selectedOrg&&S.orgs.length){S.selectedOrg=S.orgs[0];setActiveOrg(S.orgs[0].orgId);}
+
   renderOrgSelect();renderNav();
   await renderContent();
 }
+
+// ── UNIFIED CLICK DELEGATION ─────────────────────────────────
+document.addEventListener("click",function(e){
+  var target=e.target;
+  if(!target||!target.closest) return;
+  // Mobile nav (data-view)
+  var navEl=target.closest("[data-view]");
+  if(navEl){var v=navEl.getAttribute("data-view");if(v)setView(v);return;}
+  // All data-action buttons
+  var btn=target.closest("[data-action]");
+  if(!btn) return;
+  var action=btn.getAttribute("data-action");
+  if(action==="ledger-details"){
+    var empId=btn.getAttribute("data-empid"),empName=btn.getAttribute("data-empname");
+    if(empId)openEmpLedger(empId,empName||empId);
+  }else if(action==="adhoc-pay"){
+    var empId=btn.getAttribute("data-empid"),empName=btn.getAttribute("data-empname");
+    if(empId)openAdhocPayModal(empId,empName||empId);
+  }else if(action==="edit-org"){
+    var oid=btn.getAttribute("data-orgid");if(oid)openEditOrgModal(oid);
+  }else if(action==="mob-switch-org"){
+    var sid=btn.getAttribute("data-orgid");
+    if(sid){onOrgChange(sid);var sel=document.getElementById("orgSelect");if(sel)sel.value=sid;closeOrgSheet();}
+  }else if(action==="pay"){
+    var sid=btn.getAttribute("data-sid");
+    var slip=SLIP_REGISTRY[sid]||(S.lastSlip&&S.lastSlip.slipId===sid?S.lastSlip:null);
+    if(!slip)return;
+    markPaid(sid,slip.orgId,slip.empId,slip.netSalary,btn.getAttribute("data-method"));
+  }else if(action==="undo"){
+    var sid=btn.getAttribute("data-sid");
+    var slip=SLIP_REGISTRY[sid]||(S.lastSlip&&S.lastSlip.slipId===sid?S.lastSlip:null);
+    if(!slip)return;
+    undoPayment(sid,slip.orgId,slip.empId);
+  }
+});
 
 init();
 </script>
