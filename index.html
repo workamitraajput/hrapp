@@ -386,34 +386,25 @@ var ORG_CFG = loadOrgCfg();
 // Switch active connection to the given org
 function setActiveOrg(orgId){
   var cfg=ORG_CFG[orgId]||{};
-  if(cfg.url){
+  if(cfg.url&&cfg.mode==="live"){
     GAS_URL=cfg.url;
-    USE_MOCK=(cfg.mode!=="live");
+    USE_MOCK=false;
+    _cfg.url=cfg.url;_cfg.mode="live";
+  } else {
+    // No URL or demo mode — use mock
+    GAS_URL="";
+    USE_MOCK=true;
   }
-  // Also keep _cfg in sync for backward compat
-  if(cfg.url){ _cfg.url=cfg.url; _cfg.mode=cfg.mode||"live"; }
 }
 
 var MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 var CY = new Date().getFullYear();
 var CM = new Date().getMonth() + 1;
 
-// ── MOCK STORE ────────────────────────────────────────────────
+// ── MOCK STORE (empty — data comes from Google Sheets) ────────
 var STORE = {
-  orgs:[
-    {orgId:"ORG_1",orgName:"Acme Corp"},
-    {orgId:"ORG_2",orgName:"Globex Ltd"}
-  ],
-  employees:{
-    "ORG_1":[
-      {empId:"EMP_1",name:"Rajesh Kumar",designation:"Senior Developer",department:"Engineering",basicSalary:45000,hra:9000,otherAllowances:3000,joiningDate:"2022-06-01",contactNumber:"9876543210",email:"rajesh@acme.com",status:"Active"},
-      {empId:"EMP_2",name:"Priya Sharma",designation:"HR Manager",department:"Human Resources",basicSalary:38000,hra:7600,otherAllowances:2500,joiningDate:"2021-03-15",contactNumber:"9876543211",email:"priya@acme.com",status:"Active"},
-      {empId:"EMP_3",name:"Amit Patel",designation:"Accountant",department:"Finance",basicSalary:30000,hra:6000,otherAllowances:2000,joiningDate:"2023-01-10",contactNumber:"9876543212",email:"amit@acme.com",status:"Active"}
-    ],
-    "ORG_2":[
-      {empId:"EMP_4",name:"Sunita Verma",designation:"Marketing Head",department:"Marketing",basicSalary:52000,hra:10400,otherAllowances:4000,joiningDate:"2020-08-01",contactNumber:"9876543213",email:"sunita@globex.com",status:"Active"}
-    ]
-  },
+  orgs:[],
+  employees:{},
   advances:{},
   deductions:{},
   leaves:{},
@@ -883,6 +874,7 @@ var MOB_NAV=[
   {id:"employees",label:"Staff",icon:"employee"},
   {id:"salary",label:"Salary",icon:"salary"},
   {id:"advances",label:"Advances",icon:"advance"},
+  {id:"ledger",label:"Ledger",icon:"report"},
   {id:"reports",label:"Report",icon:"report"},
   {id:"settings",label:"Settings",icon:"settings"}
 ];
@@ -912,11 +904,7 @@ function setView(v){
   renderNav();renderContent();
 }
 
-function setView(v){
-  S.view=v;
-  document.getElementById("pageTitle").textContent=TITLES[v]||v;
-  renderNav();renderContent();
-}
+
 
 // ── ORG ───────────────────────────────────────────────────────
 function renderOrgSelect(){
@@ -2086,12 +2074,39 @@ async function testConn(){
     if(!r.ok)throw new Error("HTTP "+r.status);
     var data=await r.json();
     if(!data||data.success===false)throw new Error(data.error||"Bad response");
-    // Save per-org
-    ORG_CFG[orgId]={name:S.selectedOrg.orgName,url:url,mode:"live"};
-    saveOrgCfg(ORG_CFG);
+    // Fetch org list from this GAS to get authoritative org names
     GAS_URL=url;USE_MOCK=false;S.connOk=true;
     _cfg.url=url;_cfg.mode="live";localStorage.setItem("hr_cfg",JSON.stringify(_cfg));
+
+    // Update ORG_CFG with GAS orgs (authoritative names + link each org to this URL)
+    data.data.forEach(function(o){
+      if(!ORG_CFG[o.orgId]) ORG_CFG[o.orgId]={};
+      ORG_CFG[o.orgId].name=o.orgName;
+      ORG_CFG[o.orgId].url=url;
+      ORG_CFG[o.orgId].mode="live";
+    });
+    saveOrgCfg(ORG_CFG);
+
+    // Merge new orgs into S.orgs, update existing names
+    data.data.forEach(function(o){
+      var found=false;
+      for(var i=0;i<S.orgs.length;i++){
+        if(S.orgs[i].orgId===o.orgId){S.orgs[i].orgName=o.orgName;found=true;break;}
+      }
+      if(!found) S.orgs.push({orgId:o.orgId,orgName:o.orgName});
+    });
+
+    // Update current selected org name if it came from this sheet
+    if(S.selectedOrg){
+      for(var i=0;i<S.orgs.length;i++){
+        if(S.orgs[i].orgId===S.selectedOrg.orgId){
+          S.selectedOrg.orgName=S.orgs[i].orgName;break;
+        }
+      }
+    }
+
     updateConn();
+    renderOrgSelect();
     showCR("ok","Connected! Data now reads from and writes to this Google Sheet.");
     var gs=document.getElementById("gasSection");if(gs)gs.style.cssText="";
     var od=document.getElementById("optDemo"),ol=document.getElementById("optLive");
@@ -2137,37 +2152,68 @@ async function init(){
   var shAdd=document.getElementById("orgSheetAdd");
   if(shAdd)shAdd.addEventListener("click",function(){closeOrgSheet();openOrgModal();});
 
-  // Restore last org from ORG_CFG
+  // ── Build org list by fetching from EACH org's own GAS URL ──
+  // Each org in ORG_CFG has its own Google Sheet. Fetch names from GAS
+  // (authoritative) rather than trusting locally-stored names.
   var cfgKeys=Object.keys(ORG_CFG);
+  var allOrgs=[];
+
   if(cfgKeys.length){
-    var lastOrgId=localStorage.getItem("hr_last_org");
-    var restoredOrg=null;
-    if(lastOrgId&&ORG_CFG[lastOrgId])restoredOrg={orgId:lastOrgId,orgName:ORG_CFG[lastOrgId].name||lastOrgId};
-    else restoredOrg={orgId:cfgKeys[0],orgName:ORG_CFG[cfgKeys[0]].name||cfgKeys[0]};
-    S.selectedOrg=restoredOrg;
-    setActiveOrg(restoredOrg.orgId);
-    var cfg=ORG_CFG[restoredOrg.orgId]||{};
-    S.connOk=!!(cfg.url&&cfg.mode==="live");
+    // Fetch org list from every configured GAS URL in parallel
+    var fetchResults=await Promise.all(cfgKeys.map(async function(oid){
+      var cfg=ORG_CFG[oid]||{};
+      if(!cfg.url||cfg.mode!=="live") return [];
+      try{
+        var r2=await fetch(cfg.url+"?action=getOrganisations");
+        if(!r2.ok) return [];
+        var data=await r2.json();
+        if(!data||!data.data) return [];
+        // Tag each org with its GAS URL so we know which sheet it belongs to
+        return data.data.map(function(o){
+          // Update ORG_CFG with authoritative org name from GAS
+          if(!ORG_CFG[o.orgId]) ORG_CFG[o.orgId]={};
+          ORG_CFG[o.orgId].name=o.orgName;
+          ORG_CFG[o.orgId].url=cfg.url;
+          ORG_CFG[o.orgId].mode="live";
+          return {orgId:o.orgId,orgName:o.orgName};
+        });
+      }catch(e){ return []; }
+    }));
+    saveOrgCfg(ORG_CFG);
+
+    // Deduplicate orgs across all sheets
+    var seen={};
+    fetchResults.forEach(function(list){
+      list.forEach(function(o){if(!seen[o.orgId]){seen[o.orgId]=true;allOrgs.push(o);}});
+    });
+
+    // Also include any ORG_CFG entries that couldn't be fetched (offline/error)
+    // but only if they have a name stored
+    cfgKeys.forEach(function(oid){
+      if(!seen[oid]&&ORG_CFG[oid]&&ORG_CFG[oid].name){
+        seen[oid]=true;
+        allOrgs.push({orgId:oid,orgName:ORG_CFG[oid].name});
+      }
+    });
   }
 
-  if(!USE_MOCK&&GAS_URL) S.connOk=true;
+  S.orgs=allOrgs;
+
+  // Restore last selected org
+  var lastOrgId=localStorage.getItem("hr_last_org");
+  S.selectedOrg=null;
+  if(lastOrgId){
+    for(var i=0;i<S.orgs.length;i++){
+      if(S.orgs[i].orgId===lastOrgId){S.selectedOrg=S.orgs[i];break;}
+    }
+  }
+  if(!S.selectedOrg&&S.orgs.length) S.selectedOrg=S.orgs[0];
+
+  if(S.selectedOrg){
+    setActiveOrg(S.selectedOrg.orgId);
+    S.connOk=!USE_MOCK&&!!GAS_URL;
+  }
   updateConn();
-
-  var r=await call("getOrganisations");
-  if(!USE_MOCK&&(!r||r.success===false)){S.connOk=false;updateConn();}
-  var liveOrgs=r.data||[];
-
-  // Merge: GAS orgs + any other orgs from ORG_CFG (different GAS URLs)
-  var merged={};
-  liveOrgs.forEach(function(o){merged[o.orgId]=o;});
-  Object.keys(ORG_CFG).forEach(function(oid){
-    if(!merged[oid]&&ORG_CFG[oid].name)merged[oid]={orgId:oid,orgName:ORG_CFG[oid].name};
-  });
-  S.orgs=Object.values(merged);
-  if(!S.orgs.length)S.orgs=liveOrgs;
-
-  if(!S.selectedOrg&&S.orgs.length){S.selectedOrg=S.orgs[0];setActiveOrg(S.orgs[0].orgId);}
-
   renderOrgSelect();renderNav();
   await renderContent();
 }
