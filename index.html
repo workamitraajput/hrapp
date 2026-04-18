@@ -967,83 +967,143 @@ function onOrgChange(id){
   renderContent();
 }
 function openOrgModal(){
-  openModal("Add Organisation",
-    '<div class="fg" style="margin-bottom:12px"><label>Organisation Name *</label><input id="newOrgName" placeholder="e.g. Acme Corp"/></div>'+
-    '<div class="fg"><label>Apps Script URL (optional — add later in Connection Settings)</label>'+
-    '<input type="url" id="newOrgUrl" class="mono" style="font-size:12px" placeholder="https://script.google.com/macros/s/.../exec"/></div>',
-    '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" id="orgSaveBtn" onclick="saveOrg()">Save</button>'
+  openModal("Connect Organisation",
+    '<div class="fg" style="margin-bottom:10px"><label>Apps Script URL *</label>'+
+    '<input type="url" id="newOrgUrl" class="mono" style="font-size:12px" placeholder="https://script.google.com/macros/s/.../exec"/></div>'+
+    '<div class="sbox info" style="margin-top:0;font-size:12px">Paste the Web App URL from your Google Sheets Apps Script deployment. The organisation name will be fetched automatically from the sheet.</div>',
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>'+
+    '<button class="btn btn-primary" id="orgSaveBtn" onclick="saveOrg()">Connect</button>'
   );
-  setTimeout(function(){var el=document.getElementById("newOrgName");if(el)el.focus();},60);
+  setTimeout(function(){var el=document.getElementById("newOrgUrl");if(el)el.focus();},60);
 }
+
 async function saveOrg(){
-  var name=gv("newOrgName").trim();
   var url=(gv("newOrgUrl")||"").trim();
-  if(!name){alert("Name required.");return;}
-  var btn=document.getElementById("orgSaveBtn");if(btn)btn.disabled=true;
+  if(!url){alert("Please enter the Apps Script URL.");return;}
+  if(!url.startsWith("https://script.google.com")){alert("URL must start with https://script.google.com");return;}
+  var btn=document.getElementById("orgSaveBtn");
+  if(btn){btn.disabled=true;btn.textContent="Connecting...";}
 
-  // If URL provided, use it to create the org directly in that sheet
-  var res;
-  if(url){
-    res=await callWithUrl(url,"addOrganisation",{orgName:name});
-  } else {
-    res=await call("addOrganisation",{orgName:name});
+  try{
+    // Step 1: Fetch org list from this GAS URL to get authoritative names + orgIds
+    var r=await fetch(url+"?action=getOrganisations");
+    if(!r.ok) throw new Error("HTTP "+r.status);
+    var data=await r.json();
+    if(!data||data.success===false) throw new Error(data.error||"Bad response from Google Sheet");
+    var gasOrgs=data.data||[];
+    if(!gasOrgs.length) throw new Error("No organisations found in this Google Sheet. Run setupMasterSheets first.");
+
+    // Step 2: Register ALL orgs from this GAS URL in ORG_CFG
+    // This ensures the correct orgId-to-URL mapping (fixes the URL mismatch bug)
+    gasOrgs.forEach(function(o){
+      ORG_CFG[o.orgId]={name:o.orgName, url:url, mode:"live"};
+    });
+    saveOrgCfg(ORG_CFG);
+
+    // Step 3: Merge into S.orgs (deduplicated by orgId)
+    var seen={};
+    S.orgs.forEach(function(o){seen[o.orgId]=o;});
+    gasOrgs.forEach(function(o){seen[o.orgId]={orgId:o.orgId,orgName:o.orgName};});
+    S.orgs=Object.values(seen);
+
+    // Step 4: Switch to the first org from this sheet
+    var newOrg=seen[gasOrgs[0].orgId];
+    S.selectedOrg=newOrg;
+    setActiveOrg(newOrg.orgId);
+    S.connOk=true;
+    localStorage.setItem("hr_last_org",newOrg.orgId);
+
+    updateConn();
+    renderOrgSelect();
+    closeModal();
+    renderContent();
+  }catch(err){
+    alert("Connection failed: "+err.message);
+    if(btn){btn.disabled=false;btn.textContent="Connect";}
   }
-  if(!res||res.success===false){
-    alert("Error: "+(res?res.error:"Failed"));
-    if(btn)btn.disabled=false;return;
-  }
-  var newOrgId=res.orgId;
-
-  // Store per-org config
-  ORG_CFG[newOrgId]={name:name,url:url,mode:url?"live":"demo"};
-  saveOrgCfg(ORG_CFG);
-
-  // Refresh org list
-  var r=await call("getOrganisations");
-  S.orgs=r.data||[];
-  // Ensure new org is in list
-  var found=false;for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===newOrgId){found=true;break;}}
-  if(!found)S.orgs.push({orgId:newOrgId,orgName:name});
-
-  S.selectedOrg=null;
-  for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===newOrgId){S.selectedOrg=S.orgs[i];break;}}
-  if(!S.selectedOrg)S.selectedOrg=S.orgs[S.orgs.length-1];
-
-  if(S.selectedOrg){setActiveOrg(S.selectedOrg.orgId);S.connOk=!!url;}
-  updateConn();
-  renderOrgSelect();closeModal();renderContent();
 }
 
-// Edit org connection
+// Edit/Delete org
 var _editingOrgId=null;
 function openEditOrgModal(orgId){
   var o=null;for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===orgId){o=S.orgs[i];break;}}
   if(!o)return;
   _editingOrgId=orgId;
   var cfg=ORG_CFG[orgId]||{};
-  openModal("Edit — "+o.orgName,
-    '<div class="fg" style="margin-bottom:12px"><label>Organisation Name</label><input id="editOrgName" value="'+esc(o.orgName)+'"/></div>'+
+  openModal("Edit — "+esc(o.orgName),
+    '<div class="fg" style="margin-bottom:10px"><label>Organisation Name <span class="muted">(fetched from Google Sheet)</span></label>'+
+    '<input id="editOrgName" value="'+esc(o.orgName)+'" style="background:#f9f9f9;color:#888;" readonly/></div>'+
     '<div class="fg"><label>Apps Script URL</label>'+
-    '<input type="url" id="editOrgUrl" class="mono" style="font-size:12px" value="'+esc(cfg.url||"")+'"/></div>',
-    '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button><button class="btn btn-primary" onclick="saveEditOrg()">Save</button>'
+    '<input type="url" id="editOrgUrl" class="mono" style="font-size:12px" value="'+esc(cfg.url||"")+'"/></div>'+
+    '<div class="sbox warn" style="margin-top:10px;font-size:12px">To delete this organisation from the app (not from Google Sheets), use the Delete button below.</div>',
+    '<button class="btn btn-red btn-sm" onclick="deleteOrg()">Delete</button>'+
+    '<button class="btn btn-secondary" onclick="closeModal()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveEditOrg()">Save</button>'
   );
 }
 async function saveEditOrg(){
   var orgId=_editingOrgId;if(!orgId)return;
-  var name=(document.getElementById("editOrgName")||{}).value||"";
   var url=((document.getElementById("editOrgUrl")||{}).value||"").trim();
-  name=name.trim();if(!name){alert("Name required.");return;}
-  for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===orgId){S.orgs[i].orgName=name;break;}}
-  ORG_CFG[orgId]={name:name,url:url,mode:url?"live":"demo"};
+
+  // If new URL provided, re-fetch org names from GAS to update mapping
+  if(url&&url!==( ORG_CFG[orgId]||{}).url){
+    try{
+      var r=await fetch(url+"?action=getOrganisations");
+      var data=await r.json();
+      if(data&&data.data){
+        data.data.forEach(function(o){
+          ORG_CFG[o.orgId]={name:o.orgName,url:url,mode:"live"};
+          // Update name in S.orgs
+          for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===o.orgId){S.orgs[i].orgName=o.orgName;break;}}
+        });
+      }
+    }catch(e){ /* keep existing */ }
+  } else {
+    if(!ORG_CFG[orgId]) ORG_CFG[orgId]={};
+    ORG_CFG[orgId].url=url;
+    ORG_CFG[orgId].mode=url?"live":"demo";
+  }
   saveOrgCfg(ORG_CFG);
+
   if(S.selectedOrg&&S.selectedOrg.orgId===orgId){
-    S.selectedOrg.orgName=name;
     setActiveOrg(orgId);
-    S.connOk=!!(url);
+    S.connOk=!!(url&&ORG_CFG[orgId].mode==="live");
     updateConn();
   }
   renderOrgSelect();closeModal();
   if(S.view==="settings")renderSettings();
+}
+
+function deleteOrg(){
+  var orgId=_editingOrgId;if(!orgId)return;
+  var o=null;for(var i=0;i<S.orgs.length;i++){if(S.orgs[i].orgId===orgId){o=S.orgs[i];break;}}
+  if(!o)return;
+  if(!confirm("Remove "+o.orgName+" from this app? (This does NOT delete the Google Sheet.)"))return;
+
+  // Remove from ORG_CFG and S.orgs
+  delete ORG_CFG[orgId];
+  saveOrgCfg(ORG_CFG);
+  S.orgs=S.orgs.filter(function(x){return x.orgId!==orgId;});
+
+  // If deleted org was selected, switch to another
+  if(S.selectedOrg&&S.selectedOrg.orgId===orgId){
+    S.selectedOrg=S.orgs[0]||null;
+    if(S.selectedOrg){
+      setActiveOrg(S.selectedOrg.orgId);
+      localStorage.setItem("hr_last_org",S.selectedOrg.orgId);
+      S.connOk=!!(GAS_URL&&!USE_MOCK);
+    } else {
+      GAS_URL="";USE_MOCK=true;S.connOk=false;
+    }
+    updateConn();
+  }
+
+  // Clear last_org if deleted
+  if(localStorage.getItem("hr_last_org")===orgId) localStorage.removeItem("hr_last_org");
+
+  renderOrgSelect();closeModal();
+  if(S.view==="settings")renderSettings();
+  else renderContent();
 }
 
 // ── DASHBOARD ─────────────────────────────────────────────────
@@ -1994,7 +2054,7 @@ function renderSettings(){
     var isActive=orgId===o.orgId;
     return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #f5f5f5'+(isActive?";background:#f0f6ff":"")+'">'+
       '<div><div class="bold" style="font-size:13px">'+esc(o.orgName)+'</div>'+
-      '<div class="muted">'+lbl+(cfg.url?' &bull; '+esc(cfg.url.slice(0,45))+'...':'')+'</div></div>'+
+      '<div class="muted">'+lbl+(cfg.url?' &bull; '+esc(cfg.url.slice(0,42))+'...':'') +'</div></div>'+
       '<button class="btn btn-ghost btn-sm" data-action="edit-org" data-orgid="'+o.orgId+'">'+IC.edit+'</button>'+
     '</div>';
   }).join("") || '<div class="empty" style="padding:20px"><p>No organisations yet.</p></div>';
@@ -2105,9 +2165,14 @@ async function testConn(){
       }
     }
 
+    // Deduplicate S.orgs after merging
+    var tcSeen={};var tcOrgs=[];
+    S.orgs.forEach(function(o){if(!tcSeen[o.orgId]){tcSeen[o.orgId]=true;tcOrgs.push(o);}});
+    S.orgs=tcOrgs;
+
     updateConn();
     renderOrgSelect();
-    showCR("ok","Connected! Data now reads from and writes to this Google Sheet.");
+    showCR("ok","Connected! "+data.data.length+" organisation(s) loaded from Google Sheet.");
     var gs=document.getElementById("gasSection");if(gs)gs.style.cssText="";
     var od=document.getElementById("optDemo"),ol=document.getElementById("optLive");
     if(od)od.className="mode-opt";if(ol)ol.className="mode-opt sel";
@@ -2187,17 +2252,24 @@ async function init(){
       list.forEach(function(o){if(!seen[o.orgId]){seen[o.orgId]=true;allOrgs.push(o);}});
     });
 
-    // Also include any ORG_CFG entries that couldn't be fetched (offline/error)
-    // but only if they have a name stored
+    // Include ORG_CFG entries that had fetch errors (offline fallback)
+    // but ONLY if we didn't already get them from GAS
     cfgKeys.forEach(function(oid){
-      if(!seen[oid]&&ORG_CFG[oid]&&ORG_CFG[oid].name){
+      if(!seen[oid]&&ORG_CFG[oid]&&ORG_CFG[oid].name&&ORG_CFG[oid].url){
         seen[oid]=true;
         allOrgs.push({orgId:oid,orgName:ORG_CFG[oid].name});
       }
     });
   }
 
-  S.orgs=allOrgs;
+  // Final deduplication by orgId (in case any slipped through)
+  var finalSeen={};
+  var finalOrgs=[];
+  allOrgs.forEach(function(o){
+    if(!finalSeen[o.orgId]){finalSeen[o.orgId]=true;finalOrgs.push(o);}
+  });
+
+  S.orgs=finalOrgs;
 
   // Restore last selected org
   var lastOrgId=localStorage.getItem("hr_last_org");
